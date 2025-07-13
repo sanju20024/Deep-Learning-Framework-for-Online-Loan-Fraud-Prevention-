@@ -1,147 +1,147 @@
-# streamlit_app.py
+import gdown
+import os
+
+# Download dataset
+if not os.path.exists("dataset.csv"):
+    gdown.download("https://drive.google.com/uc?id=1jVZgVKycfybIT2P-MYkF-a_5RpH_qmUG", "dataset.csv", quiet=False)
+
+# Download KNN model
+if not os.path.exists("knn_classifier.joblib"):
+    gdown.download("https://drive.google.com/uc?id=1tYool1WWHSr5iHbSAOaxGnrn6MtBWi-o", "knn_classifier.joblib", quiet=False)
+
+# Download MLP model
+if not os.path.exists("mlp_classifier.joblib"):
+    gdown.download("https://drive.google.com/uc?id=1KaMDKhp-GXRDj0NbO-tdnqLcJtFBTs3t", "mlp_classifier.joblib", quiet=False)
+
+# Download test data
+if not os.path.exists("test_data.csv"):
+    gdown.download("https://drive.google.com/uc?id=1JxD40Q727X0nLkUqp1y-ZOQB91p0e4Mq", "test_data.csv", quiet=False)
 
 import streamlit as st
 import pandas as pd
-import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import (
-    precision_score, recall_score, f1_score, accuracy_score,
-    confusion_matrix, classification_report
-)
+from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score, confusion_matrix
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.neural_network import MLPClassifier
 from imblearn.over_sampling import SMOTE
 import joblib
-import os
 
 st.set_page_config(layout="wide")
-st.title("🔐 Fraud Detection using Advanced Neural Network Architectures")
+st.title("🔐 Fraud Detection using Neural Network Architecture")
 
-# Globals
-dataset = None
-X, y = None, None
-x_train, x_test, y_train, y_test = None, None, None, None
+# Initialize session_state variables
+for key in ["dataset", "X", "y", "x_train", "x_test", "y_train", "y_test"]:
+    if key not in st.session_state:
+        st.session_state[key] = None
+
 le = LabelEncoder()
-accuracy, precision, recall, fscore = [], [], [], []
 
-# Step 1: Upload dataset
 uploaded_file = st.file_uploader("📂 Upload your dataset (.csv)", type=["csv"])
+
 if uploaded_file is not None:
-    dataset = pd.read_csv(uploaded_file)
-    st.success("✅ Dataset Loaded Successfully")
-    st.dataframe(dataset.head())
+    st.session_state["dataset"] = pd.read_csv(uploaded_file)
+    st.success("✅ Dataset Loaded")
+    st.dataframe(st.session_state["dataset"].head())
 
-    # Step 2: Preprocess
-    if st.button("🔄 Preprocess Dataset"):
-        dataset['type'] = le.fit_transform(dataset['type'])
-        dataset['nameOrig'] = le.fit_transform(dataset['nameOrig'])
-        dataset['nameDest'] = le.fit_transform(dataset['nameDest'])
-        dataset.fillna(0, inplace=True)
+# ---- Preprocessing Button ----
+if st.button("🔄 Preprocess Dataset"):
+    try:
+        data = st.session_state["dataset"]
+        data['type'] = le.fit_transform(data['type'])
+        data['nameOrig'] = le.fit_transform(data['nameOrig'])
+        data['nameDest'] = le.fit_transform(data['nameDest'])
+        data.fillna(0, inplace=True)
 
-        X = dataset.drop('isFraud', axis=1)
-        y = dataset['isFraud']
+        st.session_state["X"] = data.drop('isFraud', axis=1)
+        st.session_state["y"] = data['isFraud']
 
+        st.success("✅ Preprocessing completed")
         st.subheader("Count Plot before SMOTE")
         fig, ax = plt.subplots()
-        sns.countplot(x=y, palette="Set2", ax=ax)
+        sns.countplot(x=st.session_state["y"], palette="Set2", ax=ax)
         st.pyplot(fig)
 
-    # Step 3: SMOTE & Split
-    if st.button("🧪 Apply SMOTE & Split Data"):
-        smote = SMOTE(random_state=42)
-        X, y = smote.fit_resample(X, y)
-        x_train, x_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-        st.success(f"Training records: {x_train.shape[0]}, Testing records: {x_test.shape[0]}")
-        
-        st.subheader("Count Plot after SMOTE")
-        fig, ax = plt.subplots()
-        sns.countplot(x=y, palette="Set2", ax=ax)
-        st.pyplot(fig)
+    except Exception as e:
+        st.error(f"Error during preprocessing: {e}")
 
-    # Step 4: Train & Evaluate KNN
-    if st.button("🤖 Train KNN Classifier"):
-        knn = KNeighborsClassifier(n_neighbors=10, leaf_size=30, metric='minkowski')
-        knn.fit(x_train, y_train)
-        joblib.dump(knn, "knn_classifier.joblib")
+# ---- Apply SMOTE Button ----
+if st.button("🧪 Apply SMOTE & Split"):
+    X, y = st.session_state["X"], st.session_state["y"]
+    if X is not None and y is not None:
+        try:
+            smote = SMOTE(random_state=42)
+            X, y = smote.fit_resample(X, y)
+            x_train, x_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-        pred = knn.predict(x_test)
-        p = precision_score(y_test, pred, average='macro') * 100
-        r = recall_score(y_test, pred, average='macro') * 100
-        f = f1_score(y_test, pred, average='macro') * 100
-        a = accuracy_score(y_test, pred) * 100
-        precision.append(p)
-        recall.append(r)
-        fscore.append(f)
-        accuracy.append(a)
+            st.session_state["X"], st.session_state["y"] = X, y
+            st.session_state["x_train"], st.session_state["x_test"] = x_train, x_test
+            st.session_state["y_train"], st.session_state["y_test"] = y_train, y_test
 
-        st.subheader("KNN Classifier Metrics")
-        st.write(f"**Precision:** {p:.2f}%")
-        st.write(f"**Recall:** {r:.2f}%")
-        st.write(f"**F1-Score:** {f:.2f}%")
-        st.write(f"**Accuracy:** {a:.2f}%")
+            st.success("✅ SMOTE applied and data split done")
+            st.info(f"Training size: {x_train.shape[0]}, Testing size: {x_test.shape[0]}")
+
+            st.subheader("Count Plot after SMOTE")
+            fig, ax = plt.subplots()
+            sns.countplot(x=y, palette="Set2", ax=ax)
+            st.pyplot(fig)
+        except Exception as e:
+            st.error(f"SMOTE error: {e}")
+    else:
+        st.warning("⚠️ Please run preprocessing first.")
+
+# ---- Train KNN Button ----
+if st.button("🤖 Train KNN Classifier"):
+    try:
+        x_train = st.session_state["x_train"]
+        y_train = st.session_state["y_train"]
+        x_test = st.session_state["x_test"]
+        y_test = st.session_state["y_test"]
+
+        model = KNeighborsClassifier(n_neighbors=10)
+        model.fit(x_train, y_train)
+        joblib.dump(model, "knn_classifier.joblib")
+
+        pred = model.predict(x_test)
+        st.subheader("📊 KNN Classifier Metrics")
+        st.write(f"Precision: {precision_score(y_test, pred, average='macro') * 100:.2f}%")
+        st.write(f"Recall: {recall_score(y_test, pred, average='macro') * 100:.2f}%")
+        st.write(f"F1 Score: {f1_score(y_test, pred, average='macro') * 100:.2f}%")
+        st.write(f"Accuracy: {accuracy_score(y_test, pred) * 100:.2f}%")
 
         cm = confusion_matrix(y_test, pred)
-        st.subheader("Confusion Matrix")
         fig, ax = plt.subplots()
-        sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", ax=ax)
+        sns.heatmap(cm, annot=True, fmt='d', cmap="Blues", ax=ax)
         st.pyplot(fig)
 
-    # Step 5: Train & Evaluate MLP
-    if st.button("🧠 Train MLP Classifier"):
-        mlp = MLPClassifier(max_iter=500)
-        mlp.fit(x_train, y_train)
-        joblib.dump(mlp, "mlp_classifier.joblib")
+    except Exception:
+        st.warning("⚠️ Please complete SMOTE + split before training.")
 
-        pred = mlp.predict(x_test)
-        p = precision_score(y_test, pred, average='macro') * 100
-        r = recall_score(y_test, pred, average='macro') * 100
-        f = f1_score(y_test, pred, average='macro') * 100
-        a = accuracy_score(y_test, pred) * 100
-        precision.append(p)
-        recall.append(r)
-        fscore.append(f)
-        accuracy.append(a)
+# ---- Train MLP Button ----
+if st.button("🧠 Train MLP Classifier"):
+    try:
+        x_train = st.session_state["x_train"]
+        y_train = st.session_state["y_train"]
+        x_test = st.session_state["x_test"]
+        y_test = st.session_state["y_test"]
 
-        st.subheader("MLP Classifier Metrics")
-        st.write(f"**Precision:** {p:.2f}%")
-        st.write(f"**Recall:** {r:.2f}%")
-        st.write(f"**F1-Score:** {f:.2f}%")
-        st.write(f"**Accuracy:** {a:.2f}%")
+        model = MLPClassifier(max_iter=500)
+        model.fit(x_train, y_train)
+        joblib.dump(model, "mlp_classifier.joblib")
+
+        pred = model.predict(x_test)
+        st.subheader("📊 MLP Classifier Metrics")
+        st.write(f"Precision: {precision_score(y_test, pred, average='macro') * 100:.2f}%")
+        st.write(f"Recall: {recall_score(y_test, pred, average='macro') * 100:.2f}%")
+        st.write(f"F1 Score: {f1_score(y_test, pred, average='macro') * 100:.2f}%")
+        st.write(f"Accuracy: {accuracy_score(y_test, pred) * 100:.2f}%")
 
         cm = confusion_matrix(y_test, pred)
-        st.subheader("Confusion Matrix")
         fig, ax = plt.subplots()
-        sns.heatmap(cm, annot=True, fmt="d", cmap="Purples", ax=ax)
+        sns.heatmap(cm, annot=True, fmt='d', cmap="Purples", ax=ax)
         st.pyplot(fig)
 
-    # Step 6: Comparison Graph
-    if st.button("📊 Show Comparison Graph"):
-        metrics = ['Precision', 'Recall', 'F1 Score', 'Accuracy']
-        models = ['KNN', 'MLP']
-        values = [
-            [precision[0], recall[0], fscore[0], accuracy[0]],
-            [precision[-1], recall[-1], fscore[-1], accuracy[-1]]
-        ]
-
-        df = pd.DataFrame(values, columns=metrics, index=models)
-        st.bar_chart(df.T)
-
-    # Step 7: Upload new test file for prediction
-    st.subheader("🔍 Predict from New Data")
-    test_file = st.file_uploader("Upload new CSV for prediction", key="test")
-    if test_file is not None:
-        test_data = pd.read_csv(test_file)
-        test_data['type'] = le.fit_transform(test_data['type'])
-        test_data['nameOrig'] = le.fit_transform(test_data['nameOrig'])
-        test_data['nameDest'] = le.fit_transform(test_data['nameDest'])
-
-        model_choice = st.selectbox("Select model for prediction", ("KNN", "MLP"))
-        if st.button("🔮 Predict"):
-            model_file = "knn_classifier.joblib" if model_choice == "KNN" else "mlp_classifier.joblib"
-            model = joblib.load(model_file)
-            pred = model.predict(test_data)
-            test_data["Prediction"] = ["Fraud" if p == 1 else "Genuine" for p in pred]
-            st.write(test_data)
+    except Exception:
+        st.warning("⚠️ Please complete SMOTE + split before training.")
